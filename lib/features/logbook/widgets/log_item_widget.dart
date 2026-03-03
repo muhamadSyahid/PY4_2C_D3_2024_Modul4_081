@@ -31,7 +31,8 @@ class LogItemWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: Key(log.date), // Menggunakan tanggal sebagai key unik
+      key: Key(
+          log.date.toIso8601String()), // Menggunakan tanggal sebagai key unik
       direction: DismissDirection.endToStart, // Hanya swipe dari kanan ke kiri
       background: Container(
         color: Colors.red,
@@ -70,7 +71,8 @@ class LogItemWidget extends StatelessWidget {
       child: Card(
         color: _getCategoryColor(log.category),
         child: ListTile(
-          leading: const Icon(Icons.note),
+          // leading: const Icon(Icons.note),
+          leading: const Icon(Icons.cloud_done, color: Colors.grey),
           title: Text('${log.title} (${log.category})'),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

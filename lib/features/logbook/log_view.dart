@@ -3,6 +3,8 @@ import 'package:logbook_app_081/features/logbook/log_controller.dart';
 import 'package:logbook_app_081/features/logbook/widgets/log_item_widget.dart';
 import 'package:logbook_app_081/features/onboarding/onboarding_view.dart';
 import 'package:logbook_app_081/features/logbook/models/log_model.dart';
+import 'package:logbook_app_081/helpers/log_helper.dart';
+import 'package:logbook_app_081/services/mongo_service.dart';
 
 class LogView extends StatefulWidget {
   final String username;
@@ -13,7 +15,8 @@ class LogView extends StatefulWidget {
 }
 
 class _LogViewState extends State<LogView> {
-  final LogController _controller = LogController();
+  LogController _controller = LogController();
+  bool _isLoading = false;
 
   // 1. Tambahkan Controller untuk menangkap input di dalam State
   final TextEditingController _titleController = TextEditingController();
@@ -25,9 +28,68 @@ class _LogViewState extends State<LogView> {
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(() {
-      setState(() {});
-    });
+    _controller = LogController();
+
+    // Memberikan kesempatan UI merender widget awal sebelum proses berat dimulai
+    Future.microtask(() => _initDatabase());
+  }
+
+  Future<void> _initDatabase() async {
+    setState(() => _isLoading = true);
+    try {
+      await LogHelper.writeLog(
+        "UI: Memulai inisialisasi database...",
+        source: "log_view.dart",
+      );
+
+      // Mencoba koneksi ke MongoDB Atlas (Cloud)
+      await LogHelper.writeLog(
+        "UI: Menghubungi MongoService.connect()...",
+        source: "log_view.dart",
+      );
+
+      // Mengaktifkan kembali koneksi dengan timeout 15 detik (lebih longgar untuk sinyal HP)
+      await MongoService().connect().timeout(
+            const Duration(seconds: 15),
+            onTimeout: () => throw Exception(
+              "Koneksi Cloud Timeout. Periksa sinyal/IP Whitelist.",
+            ),
+          );
+
+      await LogHelper.writeLog(
+        "UI: Koneksi MongoService BERHASIL.",
+        source: "log_view.dart",
+      );
+
+      // Mengambil data log dari Cloud
+      await LogHelper.writeLog(
+        "UI: Memanggil controller.loadFromDisk()...",
+        source: "log_view.dart",
+      );
+
+      await _controller.loadFromDisk();
+
+      await LogHelper.writeLog(
+        "UI: Data berhasil dimuat ke Notifier.",
+        source: "log_view.dart",
+      );
+    } catch (e) {
+      await LogHelper.writeLog(
+        "UI: Error - $e",
+        source: "log_view.dart",
+        level: 1,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Masalah: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      // 2. INILAH FINALLY: Apapun yang terjadi (Sukses/Gagal/Data Kosong), loading harus mati
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -139,12 +201,8 @@ class _LogViewState extends State<LogView> {
                 child: const Text("Batal")),
             ElevatedButton(
               onPressed: () {
-                _controller.updateLog(
-                    index,
-                    widget.username,
-                    _titleController.text,
-                    _contentController.text,
-                    selectedCategory);
+                _controller.updateLog(index, _titleController.text,
+                    _contentController.text, selectedCategory);
                 _titleController.clear();
                 _contentController.clear();
                 Navigator.pop(context);
@@ -219,46 +277,126 @@ class _LogViewState extends State<LogView> {
             ),
           ),
           Expanded(
-            child: ValueListenableBuilder<List<LogModel>>(
+            child:
+                // ValueListenableBuilder<List<LogModel>>(
+                //   valueListenable: _controller.logsNotifier,
+                //   builder: (context, allLogs, _) {
+                //     final userLogs = _controller.getLogsByUser(widget.username);
+                //     final filteredLogs = userLogs
+                //         .where((log) => log.title
+                //             .toLowerCase()
+                //             .contains(_searchController.text.toLowerCase()))
+                //         .toList();
+
+                //     if (filteredLogs.isEmpty) {
+                //       return Center(
+                //         child: Column(
+                //           mainAxisAlignment: MainAxisAlignment.center,
+                //           children: const [
+                //             Icon(Icons.assignment_outlined,
+                //                 size: 80, color: Colors.grey),
+                //             SizedBox(height: 16),
+                //             Text(
+                //               "Belum ada catatan yang ditemukan.\nSilakan tambahkan catatan baru!",
+                //               textAlign: TextAlign.center,
+                //               style: TextStyle(fontSize: 16, color: Colors.grey),
+                //             ),
+                //           ],
+                //         ),
+                //       );
+                //     }
+
+                //     return ListView.builder(
+                //       padding: const EdgeInsets.symmetric(horizontal: 16),
+                //       itemCount: filteredLogs.length,
+                //       itemBuilder: (context, index) {
+                //         final log = filteredLogs[index];
+                //         return LogItemWidget(
+                //             log: log,
+                //             allLogs: allLogs,
+                //             controller: _controller,
+                //             onEdit: (originalIndex, logModel) {
+                //               _showEditLogDialog(originalIndex, log);
+                //             });
+                //       },
+                //     );
+                //   },
+                // ),
+                ValueListenableBuilder<List<LogModel>>(
               valueListenable: _controller.logsNotifier,
-              builder: (context, allLogs, _) {
+              builder: (context, currentLogs, child) {
+                if (_isLoading) {
+                  return const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text("Menghubungkan ke MongoDB Atlas..."),
+                      ],
+                    ),
+                  );
+                }
+                // 2. Tampilan jika loading sudah selesai tapi data di Atlas kosong
                 final userLogs = _controller.getLogsByUser(widget.username);
                 final filteredLogs = userLogs
                     .where((log) => log.title
                         .toLowerCase()
                         .contains(_searchController.text.toLowerCase()))
                     .toList();
-
                 if (filteredLogs.isEmpty) {
                   return Center(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.assignment_outlined,
-                            size: 80, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          "Belum ada catatan yang ditemukan.\nSilakan tambahkan catatan baru!",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off,
+                            size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        const Text("Belum ada catatan di Cloud."),
+                        ElevatedButton(
+                          onPressed: _showAddLogDialog,
+                          child: const Text("Buat Catatan Pertama"),
                         ),
                       ],
                     ),
                   );
                 }
 
+                // Jika data sudah masuk, tampilkan List seperti biasa
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: filteredLogs.length,
                   itemBuilder: (context, index) {
                     final log = filteredLogs[index];
-                    return LogItemWidget(
-                        log: log,
-                        allLogs: allLogs,
-                        controller: _controller,
-                        onEdit: (originalIndex, logModel) {
-                          _showEditLogDialog(originalIndex, log);
-                        });
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: LogItemWidget(
+                          log: log,
+                          allLogs: currentLogs,
+                          controller: _controller,
+                          onEdit: (originalIndex, logModel) {
+                            _showEditLogDialog(originalIndex, log);
+                          }),
+                      // ListTile(
+                      //   leading:
+                      //       const Icon(Icons.cloud_done, color: Colors.green),
+                      //   title: Text(log.title),
+                      //   subtitle: Text(log.description),
+                      //   trailing: Row(
+                      //     mainAxisSize: MainAxisSize.min,
+                      //     children: [
+                      //       IconButton(
+                      //         icon: const Icon(Icons.edit, color: Colors.blue),
+                      //         onPressed: () => _showEditLogDialog(index, log),
+                      //       ),
+                      //       IconButton(
+                      //         icon: const Icon(Icons.delete, color: Colors.red),
+                      //         onPressed: () => _controller.removeLog(index),
+                      //       ),
+                      //     ],
+                      //   ),
+                      // ),
+                    );
                   },
                 );
               },

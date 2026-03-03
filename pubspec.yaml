@@ -31,15 +31,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter:
     sdk: flutter
+  flutter_dotenv: ^6.0.0
+  intl: ^0.20.2
+  mongo_dart: ^0.10.8
+  path_provider: ^2.1.5
   shared_preferences: ^2.2.0
 
 dev_dependencies:
-
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
@@ -58,6 +56,7 @@ flutter:
     - assets/34541940.jpg
     - assets/dkr6f7i-c937ac76-01a5-4a1d-87ad-50e6aba58df3.png
     - assets/photo_2025-09-14_23-46-09.jpg
+    - .env
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
   # For details regarding adding assets from package dependencies, see
